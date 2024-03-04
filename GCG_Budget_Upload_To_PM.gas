@@ -1,0 +1,340 @@
+Program.Sub.ScreenSU.Start
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Variable.Global.sDataErr.Declare(String)
+Variable.Global.sXLS.Declare(String)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.bRet.Declare(Boolean)
+V.Local.sFile.Declare(String)
+V.Local.sErrFile.Declare(String)
+V.Local.sRet.Declare(String)
+
+V.Local.sErrFile.Set(V.Caller.TempDir)
+
+F.ODBC.Connection!con.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+'Check to make sure that the user has either Microsoft Excel or Libre Open Office
+F.Automation.MSExcel.CheckPresence(V.Local.bRet)
+
+F.Intrinsic.Control.If(V.Local.bRet,<>,False)
+	'Allow user to select Excel file, show both formats for Excel and OO in case user has both.
+	F.Intrinsic.UI.ShowOpenFileDialog("","XLS [.xls]|*.xls|XLSX [.xlsx]|*.xlsx","C:\",V.Local.sFile)
+	'Read file user selects and validate
+	F.Intrinsic.Control.If(V.Local.sFile,<>,"***CANCEL***")
+		F.Automation.MSExcel.ReadSpreadsheet(V.Local.sFile,V.Global.sXLS)
+
+		F.Intrinsic.Control.If(V.Global.sXLS.Trim,=,"")
+			F.Intrinsic.UI.Msgbox("The file selected has no data in it. Exiting Program.")
+			F.Intrinsic.Control.CallSub(Unload)
+		F.Intrinsic.Control.EndIf
+
+		F.Intrinsic.Control.CallSub(Validatefile)
+		'If no errors found update the tables with the new information
+		F.Intrinsic.Control.If(V.Global.sDataErr,=,"")
+			F.Intrinsic.Control.CallSub(Updatetables)
+			'Let customer know if any rows already existed.
+			F.Intrinsic.Control.If(V.Global.sDataErr,<>,"")
+				F.Intrinsic.String.Build("{0}\Existing_Rows.txt",V.Local.sErrFile,V.Local.sErrFile)
+				F.Intrinsic.File.String2File(V.Local.sErrFile,V.Global.sDataErr)
+				F.Intrinsic.UI.Msgbox("Some rows already existed within Global Shop. Existing_Rows.txt saved to Temp directory. Would you like to open now?","Spreadsheet Errors",4,V.Local.sRet)
+				'User can open at the time it's created to see what went wrong.
+				F.Intrinsic.Control.If(V.Local.sRet,=,"6")
+					F.Intrinsic.Task.ShellExec(0,"Open",V.Local.sErrFile,"","",1)
+				F.Intrinsic.Control.EndIf
+			F.Intrinsic.Control.EndIf
+		'If there are files, create a file in the global temp directory since this file can be quite long
+		F.Intrinsic.Control.Else
+			F.Intrinsic.String.Build("{0}\Upload_Errors.txt",V.Local.sErrFile,V.Local.sErrFile)
+			F.Intrinsic.File.String2File(V.Local.sErrFile,V.Global.sDataErr)
+			F.Intrinsic.UI.Msgbox("Errors found. Upload_Errors.txt saved to Temp directory. Would you like to open now?","Spreadsheet Errors",4,V.Local.sRet)
+			'User can open at the time it's created to see what went wrong.
+			F.Intrinsic.Control.If(V.Local.sRet,=,"6")
+				F.Intrinsic.Task.ShellExec(0,"Open",V.Local.sErrFile,"","",1)
+			F.Intrinsic.Control.EndIf
+
+			F.Intrinsic.Control.End
+		F.Intrinsic.Control.EndIf
+
+	F.Intrinsic.Control.Else
+		F.Intrinsic.UI.Msgbox("No file selected. Exiting program.","No File Selected")
+	F.Intrinsic.Control.EndIf
+'Same logic as if using Excel
+F.Intrinsic.Control.Else
+	F.Automation.OOGeneral.CheckPresence(V.Local.bRet)
+
+	F.Intrinsic.Control.If(V.Local.bRet,<>,False)
+		F.Intrinsic.UI.ShowOpenFileDialog("","XLSX [.xlsx]|*.xlsx|XLS [.xls]|*.xls","C:\",V.Local.sFile)
+
+		F.Intrinsic.Control.If(V.Local.sFile,<>,"***CANCEL***")
+			F.Automation.OOCalc.ReadSpreadsheet(V.Local.sFile,False,V.Global.sXLS)
+
+			F.Intrinsic.Control.If(V.Global.sXLS.Trim,=,"")
+				F.Intrinsic.UI.Msgbox("The file selected has no data in it. Exiting Program.")
+				F.Intrinsic.Control.CallSub(Unload)
+			F.Intrinsic.Control.EndIf
+
+			F.Intrinsic.Control.CallSub(Validatefile)
+
+			F.Intrinsic.Control.If(V.Global.sDataErr,=,"")
+				F.Intrinsic.Control.CallSub(Updatetables)
+
+				F.Intrinsic.Control.If(V.Global.sDataErr,<>,"")
+					F.Intrinsic.String.Build("{0}\Existing_Rows.txt",V.Local.sErrFile,V.Local.sErrFile)
+					F.Intrinsic.File.String2File(V.Local.sErrFile,V.Global.sDataErr)
+					F.Intrinsic.UI.Msgbox("Some rows already existed within Global Shop. Existing_Rows.txt saved to Temp directory. Would you like to open now?","Spreadsheet Errors",4,V.Local.sRet)
+					'User can open at the time it's created to see what went wrong.
+					F.Intrinsic.Control.If(V.Local.sRet,=,"6")
+						F.Intrinsic.Task.ShellExec(0,"Open",V.Local.sErrFile,"","",1)
+					F.Intrinsic.Control.EndIf
+				F.Intrinsic.Control.EndIf
+			F.Intrinsic.Control.Else
+				F.Intrinsic.String.Build("{0}\Upload_Errors.txt",V.Local.sErrFile,V.Local.sErrFile)
+				F.Intrinsic.File.String2File(V.Local.sErrFile,V.Global.sDataErr)
+				F.Intrinsic.UI.Msgbox("Errors found. Upload_Errors.txt saved to Temp directory. Would you like to open now?","Spreadsheet Errors",4,V.Local.sRet)
+
+				F.Intrinsic.Control.If(V.Local.sRet,=,"6")
+					F.Intrinsic.Task.ShellExec(0,"Open",V.Local.sErrFile,"","",1)
+				F.Intrinsic.Control.EndIf
+
+				F.Intrinsic.Control.End
+			F.Intrinsic.Control.EndIf
+
+		F.Intrinsic.Control.Else
+			F.Intrinsic.UI.Msgbox("No file selected. Exiting program.","No File Selected")
+		F.Intrinsic.Control.EndIf
+
+	F.Intrinsic.Control.Else
+		F.Intrinsic.UI.Msgbox("You must have either MS Excel or OO Calc installed to run this program.")
+		F.Intrinsic.Control.CallSub(Unload)
+	F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_Budget_Upload_To_PM.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+Program.Sub.Main.End
+
+Program.Sub.ValidateFile.Start
+F.Intrinsic.Control.SetErrorHandler("UpdateTables_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.sRow.Declare(String)
+V.Local.sCol.Declare(String)
+V.Local.iRow.Declare(Long)
+V.Local.iCol.Declare(Long)
+V.Local.iActualRow.Declare(Long,2)
+V.Local.sSQL.Declare(String)
+
+F.Intrinsic.UI.InvokeWaitDialog("Validating File")
+
+F.Intrinsic.String.Split(V.Global.sXLS,"$!$",V.Local.sRow)
+'Since the Header column doesn't affect the data being entered, go ahead and skip validating it.
+F.Intrinsic.Control.For(V.Local.iRow,1,V.Local.sRow.UBound,1)
+	F.Intrinsic.String.Split(V.Local.sRow(V.Local.iRow),"*!*",V.Local.sCol)
+	'Check to see if the project exists. Project must exist before the program can run
+	F.Intrinsic.String.Build("SELECT * FROM PROJECT_MASTER WHERE PROJECT = '{0}'",V.Local.sCol(0),V.Local.sSQL)
+	F.ODBC.Connection!con.OpenLocalRecordsetRO("rst",V.Local.sSQL)
+
+	F.Intrinsic.Control.If(V.Local.sCol(0),=,"")
+		F.Intrinsic.String.Build("{0}Row {1} Column A: Project can not be blank.{2}",V.Global.sDataErr,V.Local.iActualRow,V.Ambient.NewLine,V.Global.sDataErr)
+	F.Intrinsic.Control.ElseIf(V.ODBC.con!rst.EOF,=,True)
+		F.Intrinsic.String.Build("{0}Row {1} Column A: Project could not be found.{2}",V.Global.sDataErr,V.Local.iActualRow,V.Ambient.NewLine,V.Global.sDataErr)
+	F.Intrinsic.Control.EndIf
+	F.ODBC.con!rst.Close
+	'Check to make sure that all the numbers are actually number values, and that character length for strings is formatted to fit the tables format.
+	F.Intrinsic.Control.If(V.Local.sCol(1).Length,>,4)
+		F.Intrinsic.String.Build("{0}Row {1} Column B: Phase is {2} characters. It must be less than 4.{3}",V.Global.sDataErr,V.Local.iActualRow,V.Local.sCol(1).Length,V.Ambient.NewLine,V.Global.sDataErr)
+	F.Intrinsic.Control.ElseIf(V.Local.sCol(1),=,"")
+		F.Intrinsic.String.Build("{0}Row {1} Column B: Phase cannot be blank.{2}",V.Global.sDataErr,V.Local.iActualRow,V.Ambient.NewLine,V.Global.sDataErr)
+	F.Intrinsic.Control.EndIf
+
+	F.Intrinsic.Control.If(V.Local.sCol(2).Length,>,30)
+		F.Intrinsic.String.Build("{0}Row {1} Column C: Phase Desc is {2} characters. It must be less than 30.{3}",V.Global.sDataErr,V.Local.iActualRow,V.Local.sCol(2).Length,V.Ambient.NewLine,V.Global.sDataErr)
+	F.Intrinsic.Control.ElseIf(V.Local.sCol(2),=,"")
+		F.Intrinsic.String.Build("{0}Row {1} Column C: Phase Desc cannot be blank.{2}",V.Global.sDataErr,V.Local.iActualRow,V.Ambient.NewLine,V.Global.sDataErr)
+	F.Intrinsic.Control.EndIf
+
+	F.Intrinsic.Control.If(V.Local.sCol(3),<>,"MATL","AND",V.Local.sCol(3),<>,"OUTS",V.Local.sCol(3),<>,"SHOP")
+		F.Intrinsic.String.Build("{0}Row{1} Column D: Group must be either MATL,OUTS, or SHOP. Current value is '{2}'.{3}",V.Global.sDataErr,V.Local.iActualRow,V.Local.sCol(3),V.Ambient.NewLine,V.Global.sDataErr)
+	F.Intrinsic.Control.EndIf
+
+	F.Intrinsic.Control.If(V.Local.sCol(4).IsNumeric,=,False)
+		F.Intrinsic.String.Build("{0}Row {1} Column E: HRS must be a numeric value. If 0 put 0.{2}",V.Global.sDataErr,V.Local.iActualRow,V.Ambient.NewLine,V.Global.sDataErr)
+	F.Intrinsic.Control.EndIf
+
+	F.Intrinsic.Control.If(V.Local.sCol(5).IsNumeric,=,False)
+		F.Intrinsic.String.Build("{0}Row {1} Column F: $/HR must be a numeric value. If 0 put 0.{2}",V.Global.sDataErr,V.Local.iActualRow,V.Ambient.NewLine,V.Global.sDataErr)
+	F.Intrinsic.Control.EndIf
+
+	F.Intrinsic.Control.If(V.Local.sCol(6).IsNumeric,=,False)
+		F.Intrinsic.String.Build("{0}Row {1} Column G: Amount must be a numeric value. If 0 put 0.{2}",V.Global.sDataErr,V.Local.iActualRow,V.Ambient.NewLine,V.Global.sDataErr)
+	F.Intrinsic.Control.EndIf
+	'Keep track of the actual row we are on for the error file
+	F.Intrinsic.Math.Add(V.Local.iActualRow,1,V.Local.iActualRow)
+F.Intrinsic.Control.Next(V.Local.iRow)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("UpdateTables_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_Budget_Upload_To_PM.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+Program.Sub.ValidateFile.End
+
+Program.Sub.updatetables.Start
+F.Intrinsic.Control.SetErrorHandler("updatetables_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.sRow.Declare(String)
+V.Local.iRow.Declare(Long)
+V.Local.sCol.Declare(String)
+V.Local.sSQL.Declare(String)
+V.Local.sDate.Declare(String)
+V.Local.sTime.Declare(String)
+V.Local.iActualRow.Declare(Long,2)
+
+F.Intrinsic.UI.ChangeWaitStatus("Updating Projects")
+'Splitting the excel file into individual rows
+F.Intrinsic.String.Split(V.Global.sXLS,"$!$",V.Local.sRow)
+'For each row in the table split into individual columns
+F.Intrinsic.Control.For(V.Local.iRow,1,V.Local.sRow.UBound,1)
+	F.Intrinsic.String.Split(V.Local.sRow(V.Local.iRow),"*!*",V.Local.sCol)
+	'Check to make sure that the Phase already exists in the table.
+	F.Intrinsic.String.Build("SELECT * FROM PROJECT_PHASE_D WHERE PHASE = '{0}'",V.Local.sCol(1),V.Local.sSQL)
+	F.ODBC.Connection!con.OpenLocalRecordsetRO("rst",V.Local.sSQL)
+	'If not add to table.
+	F.Intrinsic.Control.If(V.ODBC.con!rst.EOF,=,True)
+		F.Intrinsic.String.Build("INSERT INTO PROJECT_PHASE_D VALUES ('{0}','{1}','')",V.Local.sCol(1),V.Local.sCol(2),V.Local.sSQL)
+		F.ODBC.Connection!con.Execute(V.Local.sSQL)
+	F.Intrinsic.Control.EndIf
+	F.ODBC.con!rst.Close
+	'Make sure that the group exists in tables, if not add
+	F.Intrinsic.String.Build("SELECT * FROM PROJECT_GROUP WHERE F_GROUP = '{0}'",V.Local.sCol(3),V.Local.sSQL)
+	F.ODBC.Connection!con.OpenLocalRecordsetRO("rst",V.Local.sSQL)
+	
+	F.Intrinsic.Control.If(V.ODBC.con!rst.EOF,=,True)
+		'Only three different groups that should be added as per quote
+		F.Intrinsic.Control.If(V.Local.sCol(3),=,"MATL")
+			F.Intrinsic.String.Build("INSERT INTO PROJECT_GROUP VALUES ('{0}','Material',0,'')",V.Local.sCol(3),V.Local.sSQL)
+		F.Intrinsic.Control.EndIf
+
+		F.Intrinsic.Control.If(V.Local.sCol(3),=,"OUTS")
+			F.Intrinsic.String.Build("INSERT INTO PROJECT_GROUP VALUES ('{0}','Outside',0,'')",V.Local.sCol(3),V.Local.sSQL)
+		F.Intrinsic.Control.EndIf
+
+		F.Intrinsic.Control.If(V.Local.sCol(3),=,"SHOP")
+			F.Intrinsic.String.Build("INSERT INTO PROJECT_GROUP VALUES ('{0}','Labor',0,'')",V.Local.sCol(3),V.Local.sSQL)
+		F.Intrinsic.Control.EndIf
+		
+		F.ODBC.Connection!con.Execute(V.Local.sSQL)
+	F.Intrinsic.Control.EndIf
+	F.ODBC.con!rst.Close
+	'Check to see if the project phase combination exists yet. If not add this as well to the table.
+	F.Intrinsic.String.Build("SELECT * FROM PROJECT_PHASE WHERE PROJECT = '{0}' AND PHASE = '{1}'",V.Local.sCol(0),V.Local.sCol(1),V.Local.sSQL)
+	F.ODBC.Connection!con.OpenLocalRecordsetRO("rst",V.Local.sSQL)
+	
+	F.Intrinsic.String.Format(V.Ambient.Date,"YYYYMMDD",V.Local.sDate)
+	F.Intrinsic.String.Format(V.Ambient.Time,"HhNnSs",V.Local.sTime)
+	F.Intrinsic.String.Build("{0}00",V.Local.sTime,V.Local.sTime)
+	
+	F.Intrinsic.Control.If(V.ODBC.con!rst.EOF,=,True)
+		F.Intrinsic.String.Build("INSERT INTO PROJECT_PHASE VALUES ('{0}','{1}',1,'{2}',0,0,0,0,0,'00000000','000000000',0,'','','','','','{3}','{4}','{5}','00000000','00000000','','00000000','00000000','','','')",V.Local.sCol(0),V.Local.sCol(1),V.Local.sCol(2),V.Local.sDate,V.Local.sTime,V.Caller.User,V.Local.sSQL)
+		F.ODBC.Connection!con.Execute(V.Local.sSQL)
+	F.Intrinsic.Control.EndIf
+	F.ODBC.con!rst.Close
+	'See if the row found in the File already exists, if so nothing is changed
+	F.Intrinsic.String.Build("SELECT * FROM PROJECT_CURR_BUDG WHERE PROJECT = '{0}' AND PHASE = '{1}' AND F_GROUP = '{2}'",V.Local.sCol(0),V.Local.sCol(1),V.Local.sCol(3),V.Local.sSQL)
+	F.ODBC.Connection!con.OpenLocalRecordsetRO("rst",V.Local.sSQL)
+	
+	F.Intrinsic.Control.If(V.ODBC.con!rst.EOF,=,True)
+		F.Intrinsic.Control.If(V.Local.sCol(3),=,"SHOP")
+			F.Intrinsic.String.Build("INSERT INTO PROJECT_CURR_BUDG VALUES ('{0}','{1}','{2}',1,0,0,0,{3},{4},'00000000','00000000',0,0,0,0,0,'00000000','00000000',0,0,0,0,0,'00000000','00000000',0,0,0,0,0,'00000000','00000000',{5},0,0,'{6}','{7}','{8}','00000000','00000000','','00000000','00000000','',0,'')",V.Local.sCol(0),V.Local.sCol(1),V.Local.sCol(3),V.Local.sCol(6),V.Local.sCol(4),V.Local.sCol(5),V.Local.sDate,V.Local.sTime,V.Caller.User,V.Local.sSQL)
+			F.ODBC.Connection!con.Execute(V.Local.sSQL)
+		F.Intrinsic.Control.ElseIf(V.Local.sCol(3),=,"MATL")
+			F.Intrinsic.String.Build("INSERT INTO PROJECT_CURR_BUDG VALUES ('{0}','{1}','{2}',1,0,{3},0,0,0,'00000000','00000000',0,0,0,0,0,'00000000','00000000',0,0,0,0,0,'00000000','00000000',0,0,0,0,0,'00000000','00000000',0,0,0,'{4}','{5}','{6}','00000000','00000000','','00000000','00000000','',0,'')",V.Local.sCol(0),V.Local.sCol(1),V.Local.sCol(3),V.Local.sCol(6),V.Local.sDate,V.Local.sTime,V.Caller.User,V.Local.sSQL)
+			F.ODBC.Connection!con.Execute(V.Local.sSQL)
+		F.Intrinsic.Control.ElseIf(V.Local.sCol(3),=,"OUTS")
+			F.Intrinsic.String.Build("INSERT INTO PROJECT_CURR_BUDG VALUES ('{0}','{1}','{2}',1,0,0,{3},0,0,'00000000','00000000',0,0,0,0,0,'00000000','00000000',0,0,0,0,0,'00000000','00000000',0,0,0,0,0,'00000000','00000000',0,0,0,'{4}','{5}','{6}','00000000','00000000','','00000000','00000000','',0,'')",V.Local.sCol(0),V.Local.sCol(1),V.Local.sCol(3),V.Local.sCol(6),V.Local.sDate,V.Local.sTime,V.Caller.User,V.Local.sSQL)
+			F.ODBC.Connection!con.Execute(V.Local.sSQL)
+		F.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.Else
+		F.Intrinsic.String.Build("{0}Row {1} already exists in Global Shop. Nothing changed for this row.{2}",V.Global.sDataErr,V.Local.iActualRow,V.Ambient.NewLine,V.Global.sDataErr)
+	F.Intrinsic.Control.EndIf
+	F.ODBC.con!rst.Close
+	
+	F.Intrinsic.Math.Add(V.Local.iActualRow,1,V.Local.iActualRow)
+F.Intrinsic.Control.Next(V.Local.iRow)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("updatetables_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_Budget_Upload_To_PM.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+Program.Sub.updatetables.End
+
+Program.Sub.unload.Start
+F.Intrinsic.Control.SetErrorHandler("unload_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+F.ODBC.Connection!con.Close
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("unload_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_Budget_Upload_To_PM.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+Function.Intrinsic.Control.EndIf
+
+Program.Sub.unload.End
+
+Program.Sub.Comments.Start
+${$0$}$Budget Upload$}$BCC$}$10/29/2015
+${$2$}$$}$$}$2$}$4$}$Table Update$}$11/23/2015 9:26:14 AM$}$PROJECT_CURR_BUDG needed to be updated. A column was added in Cobol but not in the SQL. Should be available in the 2015.3, anything earlier will require the updated table to be added manually.
+${$2$}$$}$$}$1$}$4$}$Custom Menu Item$}$11/23/2015 9:15:39 AM$}$Project Management -> Administration -> Budget Upload
+${$2$}$$}$$}$0$}$4$}$Budget Upload Excel File$}$11/23/2015 9:14:45 AM$}$The user will need to create an excel file as per the Project Notes and Description Tab
+${$3$}$0$}$$}$0$}$-1$}$$}$12:00:00 AM$}$A GAB script will be created that will read a spreadsheet and update the Current Budget records on current and existing projects into Global Shop.
+
+Spreadsheet Columns:
+
+Project
+
+Phase
+
+Phase Desc
+
+Group
+
+HRS
+
+$/Hr
+
+Amount
+
+First row will be the header row.
+Program.Sub.Comments.End
+
